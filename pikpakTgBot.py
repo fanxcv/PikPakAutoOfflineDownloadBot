@@ -154,15 +154,30 @@ def magnet_upload(file_url, account):
     # 请求离线下载所需数据
     login_headers = get_headers(account)
     torrent_url = f"{PIKPAK_API_URL}/drive/v1/files"
-    torrent_data = {
-        "kind": "drive#file",
-        "name": "",
-        "upload_type": "UPLOAD_TYPE_URL",
-        "url": {
-            "url": file_url
-        },
-        "folder_type": "DOWNLOAD"
-    }
+    # 磁力下载
+    if str(file_url).startswith("'magnet:?'"):
+        torrent_data = {
+            "kind": "drive#file",
+            "name": "",
+            "upload_type": "UPLOAD_TYPE_URL",
+            "url": {
+                "url": file_url
+            },
+            "folder_type": "DOWNLOAD"
+        }
+    # 普通下载
+    else:
+        torrent_data = {
+            "kind": "drive#file",
+            "name": "",
+            "upload_type": "UPLOAD_TYPE_URL",
+            "params": {"from": "file"},
+            "parent_id": "",
+            "url": {
+                "url": file_url
+            },
+            "folder_type": "DOWNLOAD"
+        }
     # 请求离线下载
     torrent_result = requests.post(url=torrent_url, headers=login_headers, json=torrent_data, timeout=5).json()
 
@@ -183,9 +198,9 @@ def magnet_upload(file_url, account):
     file_url_part = re.search(r'^(magnet:\?).*(xt=.+?)(&|$)', file_url)
     if file_url_part:
         file_url_simple = ''.join(file_url_part.groups()[:-1])
-        logging.info(f"账号{account}添加离线磁力任务:{file_url_simple}")
+        logging.info(f"账号{account}添加离线任务:{file_url_simple}")
     else:
-        logging.info(f"账号{account}添加离线磁力任务:{file_url}")
+        logging.info(f"账号{account}添加离线任务:{file_url}")
 
     # 返回离线任务id、下载文件名
     return torrent_result['task']['id'], torrent_result['task']['name']
@@ -394,8 +409,11 @@ def delete_trash(file_id, account, mode='normal'):
 # /pikpak命令主程序
 def main(update: Update, context: CallbackContext, magnet):
     # 磁链的简化表示，不保证兼容所有磁链，仅为显示信息时比较简介，不影响任何实际功能
-    mag_url_part = re.search(r'^(magnet:\?).*(xt=.+?)(&|$)', magnet)
-    mag_url_simple = ''.join(mag_url_part.groups()[:-1])
+    if str(magnet).startswith("magnet:?"):
+        mag_url_part = re.search(r'^(magnet:\?).*(xt=.+?)(&|$)', magnet)
+        mag_url_simple = ''.join(mag_url_part.groups()[:-1])
+    else:
+        mag_url_simple = magnet
 
     try:  # 捕捉所有的请求超时异常
         for each_account in USER:
@@ -406,7 +424,7 @@ def main(update: Update, context: CallbackContext, magnet):
 
             if not mag_id:  # 如果添加离线失败，那就试试下一个账号
                 if each_account == USER[-1]:  # 最后一个账号仍然无法离线下载
-                    print_info = f'磁链{mag_url_simple}所有账号均离线下载失败！可能是所有账号免费离线次数用尽，或者文件大小超过网盘剩余容量！'
+                    print_info = f'{mag_url_simple}所有账号均离线下载失败！可能是所有账号免费离线次数用尽，或者文件大小超过网盘剩余容量！'
                     context.bot.send_message(chat_id=update.effective_chat.id, text=print_info)
                     logging.warning(print_info)
                 continue
@@ -521,7 +539,7 @@ def main(update: Update, context: CallbackContext, magnet):
 
             # 否则是单个文件，只推送一次，不用太担心网络请求出错
             else:
-                logging.info(f'磁链{mag_url_simple}内容为单文件，将直接推送aria2下载')
+                logging.info(f'{mag_url_simple}内容为单文件，将直接推送aria2下载')
 
                 jsonreq = json.dumps({'jsonrpc': '2.0', 'id': 'qwer', 'method': 'aria2.addUri',
                                       'params': [f"token:{ARIA2_SECRET}", [down_url],
